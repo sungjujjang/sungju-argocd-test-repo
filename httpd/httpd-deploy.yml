@@ -6,7 +6,7 @@ metadata:
   labels:
     app: httpd  #service가 바라보는 label이 아님. 주의.
 spec:
-  replicas: 3
+  replicas: 5
   selector:
     matchLabels:
       app: httpd
