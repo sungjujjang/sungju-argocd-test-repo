@@ -31,7 +31,7 @@ spec:
       - |
         WEBHOOK=$(cat /secret/url)
 
-        curl \
+        curl -k \
           -H "Content-Type: application/json" \
           -X POST \
           -d "{\"content\":\"{{workflow.parameters.message}}\"}" \
