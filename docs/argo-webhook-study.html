@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>Argo Events + Argo Workflows 웹훅 테스트 구성 학습 정리</title>
+  <style>
+    @page { size: A4; margin: 18mm 15mm; }
+    body {
+      font-family: "Malgun Gothic", "Segoe UI", sans-serif;
+      color: #1f2933;
+      line-height: 1.62;
+      font-size: 13px;
+      margin: 0;
+    }
+    h1 { font-size: 27px; margin: 0 0 8px; line-height: 1.25; }
+    h2 { font-size: 21px; margin: 28px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #ccd4df; }
+    h3 { font-size: 16px; margin: 20px 0 8px; }
+    h4 { font-size: 14px; margin: 14px 0 6px; }
+    p { margin: 7px 0; }
+    ul, ol { margin: 7px 0 7px 20px; padding: 0; }
+    li { margin: 3px 0; }
+    code {
+      font-family: Consolas, "Courier New", monospace;
+      background: #eef2f7;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    pre {
+      font-family: Consolas, "Courier New", monospace;
+      background: #101827;
+      color: #e5e7eb;
+      padding: 10px 12px;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+      line-height: 1.45;
+      font-size: 10.5px;
+      break-inside: avoid;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 14px;
+      font-size: 12px;
+    }
+    th, td {
+      border: 1px solid #cfd6df;
+      padding: 7px;
+      vertical-align: top;
+    }
+    th { background: #eef2f7; text-align: left; }
+    .muted { color: #607080; }
+    .box {
+      border: 1px solid #cfd6df;
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin: 10px 0;
+      break-inside: avoid;
+    }
+    .page-break { break-before: page; }
+  </style>
+</head>
+<body>
+  <h1>Argo Events + Argo Workflows 웹훅 테스트 구성 학습 정리</h1>
+  <p class="muted">작성 기준: 2026-06-10, repo: <code>C:\Users\user\sungju-argocd-test-repo</code></p>
+
+  <div class="box">
+    <strong>목표</strong>
+    <p>외부에서 웹훅 메시지를 보내면 Argo Events가 요청을 받고, Sensor가 Argo Workflow를 생성하며, Workflow가 받은 메시지를 테스트용 웹 서비스로 그대로 전달한다. 테스트용 웹 서비스는 받은 요청을 메모리에 저장하고 브라우저에서 최근 요청을 확인할 수 있게 한다.</p>
+  </div>
+
+  <h2>1. 전체 구성 요약</h2>
+  <p>이번 repo에는 Kubernetes 리소스를 선언한 YAML만 올라간다. ArgoCD가 이 repo를 sync하면 클러스터에 아래 리소스가 생성된다.</p>
+
+  <table>
+    <tr><th>파일</th><th>생성되는 리소스</th><th>역할</th></tr>
+    <tr>
+      <td><code>argoevent/00-namespace.yaml</code></td>
+      <td><code>Namespace</code></td>
+      <td>테스트 리소스를 <code>argo-webhook-test</code> 네임스페이스에 모은다.</td>
+    </tr>
+    <tr>
+      <td><code>argoevent/10-webhook-receiver.yaml</code></td>
+      <td><code>ConfigMap</code>, <code>Deployment</code>, <code>Service</code></td>
+      <td>요청 저장/조회용 Python 웹 서비스와 NodePort <code>31080</code>을 만든다.</td>
+    </tr>
+    <tr>
+      <td><code>argoevent/20-argo-events-workflow.yaml</code></td>
+      <td><code>EventBus</code>, <code>ServiceAccount</code>, <code>Role</code>, <code>RoleBinding</code>, <code>WorkflowTemplate</code>, <code>EventSource</code>, <code>Service</code>, <code>Sensor</code></td>
+      <td>웹훅 수신, 이벤트 전달, Workflow 생성, receiver로 POST 전달을 구성한다.</td>
+    </tr>
+  </table>
+
+  <h3>외부 접속 포트</h3>
+  <table>
+    <tr><th>용도</th><th>URL</th><th>설명</th></tr>
+    <tr>
+      <td>웹훅 입력</td>
+      <td><code>http://10.0.0.200:31081/webhook</code></td>
+      <td>외부에서 POST 요청을 보내는 Argo Events EventSource 엔드포인트</td>
+    </tr>
+    <tr>
+      <td>결과 확인 UI</td>
+      <td><code>http://10.0.0.200:31080/</code></td>
+      <td>Workflow가 receiver로 보낸 요청을 브라우저에서 확인하는 페이지</td>
+    </tr>
+  </table>
+
+  <h3>요청 흐름</h3>
+  <pre>사용자 curl
+  -> NodePort 31081
+  -> EventSource(webhook-eventsource)
+  -> EventBus(default, NATS)
+  -> Sensor(webhook-forwarder)
+  -> Workflow 생성(forward-webhook-xxxxx)
+  -> curl 컨테이너 실행
+  -> ClusterIP Service webhook-receiver
+  -> receiver Python 앱 메모리에 저장
+  -> NodePort 31080에서 브라우저로 확인</pre>
+
+  <h2>2. Namespace YAML</h2>
+  <p>모든 테스트 리소스를 한 네임스페이스에 모으면 삭제, 조회, 권한 관리가 쉬워진다.</p>
+
+  <pre>apiVersion: v1
+kind: Namespace
+metadata:
+  name: argo-webhook-test</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>apiVersion: v1</code></td><td>Kubernetes 기본 리소스 API 그룹이다.</td></tr>
+    <tr><td><code>kind: Namespace</code></td><td>네임스페이스를 생성한다.</td></tr>
+    <tr><td><code>metadata.name</code></td><td>이후 모든 리소스의 <code>namespace</code> 값과 맞아야 한다.</td></tr>
+  </table>
+
+  <h2>3. 웹훅 테스트용 웹 서비스</h2>
+  <p><code>10-webhook-receiver.yaml</code>은 요청을 저장하고 화면에 보여주는 테스트 웹 서비스를 만든다. 데이터베이스 없이 프로세스 메모리에 저장하므로 Pod가 재시작되면 저장된 요청은 사라진다. 테스트용으로는 단순하고 빠르다는 장점이 있다.</p>
+
+  <h3>3.1 ConfigMap</h3>
+  <p>Python 애플리케이션 코드를 컨테이너 이미지에 굽지 않고 ConfigMap으로 주입한다.</p>
+
+  <pre>apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-receiver-app
+  namespace: argo-webhook-test
+data:
+  app.py: |
+    ... Python HTTP server code ...</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>data.app.py</code></td><td>컨테이너 안에서 <code>/app/app.py</code>로 마운트될 Python 코드다.</td></tr>
+    <tr><td><code>EVENTS = []</code></td><td>받은 요청을 저장하는 메모리 리스트다.</td></tr>
+    <tr><td><code>MAX_EVENTS = 100</code></td><td>최대 100건만 보관한다.</td></tr>
+    <tr><td><code>do_POST</code></td><td>POST 요청 body, header, path, method, time을 저장한다.</td></tr>
+    <tr><td><code>do_GET</code></td><td><code>/</code>에서는 HTML 화면, <code>/api/events</code>에서는 JSON 배열을 반환한다.</td></tr>
+  </table>
+
+  <h3>3.2 Deployment</h3>
+  <p>receiver 앱을 실제 Pod로 실행한다.</p>
+
+  <pre>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-receiver
+  namespace: argo-webhook-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: webhook-receiver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: webhook-receiver
+    spec:
+      containers:
+        - name: receiver
+          image: python:3.12-alpine
+          command: ["python", "/app/app.py"]
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: app
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: app
+          configMap:
+            name: webhook-receiver-app</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>replicas: 1</code></td><td>메모리에 요청을 저장하므로 replica를 1개로 둔다. 2개 이상이면 요청이 Pod별로 나뉘어 저장된다.</td></tr>
+    <tr><td><code>selector.matchLabels</code></td><td>Deployment가 관리할 Pod를 고르는 label이다.</td></tr>
+    <tr><td><code>image: python:3.12-alpine</code></td><td>별도 빌드 없이 Python 기본 이미지로 실행한다.</td></tr>
+    <tr><td><code>command</code></td><td>ConfigMap에서 마운트된 <code>/app/app.py</code>를 실행한다.</td></tr>
+    <tr><td><code>containerPort: 8080</code></td><td>Python 서버가 Pod 내부에서 listen하는 포트다.</td></tr>
+    <tr><td><code>volumeMounts</code></td><td>ConfigMap의 <code>app.py</code>를 컨테이너의 <code>/app</code> 디렉터리에 읽기 전용으로 붙인다.</td></tr>
+  </table>
+
+  <h3>3.3 Service(NodePort)</h3>
+  <p>브라우저에서 receiver UI를 볼 수 있도록 NodePort를 열었다.</p>
+
+  <pre>apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-receiver
+  namespace: argo-webhook-test
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: webhook-receiver
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 31080</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>type: NodePort</code></td><td>클러스터 노드 IP와 고정 포트로 외부 접속을 허용한다.</td></tr>
+    <tr><td><code>selector</code></td><td>Deployment Pod의 label과 맞아야 트래픽이 Pod로 간다.</td></tr>
+    <tr><td><code>port: 80</code></td><td>클러스터 내부 서비스 포트다. Workflow에서는 <code>http://webhook-receiver...</code>로 접근한다.</td></tr>
+    <tr><td><code>targetPort: http</code></td><td>Pod의 named port <code>http</code>, 즉 8080으로 연결한다.</td></tr>
+    <tr><td><code>nodePort: 31080</code></td><td>외부 접속 포트다. 이미 사용 중이면 ArgoCD sync가 실패하므로 다른 값으로 바꿔야 한다.</td></tr>
+  </table>
+
+  <h2 class="page-break">4. Argo Events + Workflow 파이프라인</h2>
+  <p><code>20-argo-events-workflow.yaml</code>은 Argo Events가 웹훅을 받고 Workflow를 실행하는 전체 파이프라인이다.</p>
+
+  <h3>4.1 EventBus</h3>
+  <p>EventSource와 Sensor 사이에서 이벤트를 전달하는 버스다. 여기서는 테스트 목적이라 네이티브 NATS 1개 replica를 사용했다.</p>
+
+  <pre>apiVersion: argoproj.io/v1alpha1
+kind: EventBus
+metadata:
+  name: default
+  namespace: argo-webhook-test
+spec:
+  nats:
+    native:
+      replicas: 1</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>kind: EventBus</code></td><td>Argo Events의 이벤트 전달 인프라다.</td></tr>
+    <tr><td><code>metadata.name: default</code></td><td>EventSource와 Sensor의 <code>eventBusName: default</code>와 연결된다.</td></tr>
+    <tr><td><code>nats.native.replicas: 1</code></td><td>테스트용 단일 NATS다. 운영 고가용성이 필요하면 replica와 구성을 조정한다.</td></tr>
+  </table>
+
+  <h3>4.2 ServiceAccount, Role, RoleBinding</h3>
+  <p>Sensor는 이벤트를 받으면 Kubernetes API를 호출해서 Workflow 리소스를 생성해야 한다. 이를 위해 권한을 부여한다.</p>
+
+  <pre>apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook-sensor
+  namespace: argo-webhook-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webhook-sensor
+  namespace: argo-webhook-test
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["create", "get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webhook-sensor
+  namespace: argo-webhook-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: webhook-sensor
+subjects:
+  - kind: ServiceAccount
+    name: webhook-sensor
+    namespace: argo-webhook-test</pre>
+
+  <table>
+    <tr><th>리소스</th><th>역할</th></tr>
+    <tr><td><code>ServiceAccount</code></td><td>Sensor Pod가 사용할 Kubernetes 계정이다.</td></tr>
+    <tr><td><code>Role</code></td><td><code>argoproj.io</code> API 그룹의 <code>workflows</code>에 대해 생성/조회 권한을 준다.</td></tr>
+    <tr><td><code>RoleBinding</code></td><td>위 Role을 <code>webhook-sensor</code> ServiceAccount에 연결한다.</td></tr>
+  </table>
+
+  <h3>4.3 WorkflowTemplate</h3>
+  <p>실제 전달 작업을 수행하는 Workflow의 템플릿이다. Sensor는 매번 새 Workflow를 만들고, 그 Workflow가 이 템플릿을 참조한다.</p>
+
+  <pre>apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: forward-webhook-to-receiver
+  namespace: argo-webhook-test
+spec:
+  entrypoint: forward
+  arguments:
+    parameters:
+      - name: payload
+        value: "{}"
+  templates:
+    - name: forward
+      inputs:
+        parameters:
+          - name: payload
+      container:
+        image: curlimages/curl:8.10.1
+        command: [sh, -c]
+        args:
+          - |
+            set -eu
+            printf '%s' "$PAYLOAD" > /tmp/payload
+            curl -sS -X POST "$TARGET_URL" \
+              -H "Content-Type: application/json" \
+              --data-binary @/tmp/payload
+        env:
+          - name: TARGET_URL
+            value: http://webhook-receiver.argo-webhook-test.svc.cluster.local/
+          - name: PAYLOAD
+            value: "{{inputs.parameters.payload}}"</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>entrypoint: forward</code></td><td>Workflow가 시작할 template 이름이다.</td></tr>
+    <tr><td><code>arguments.parameters.payload</code></td><td>Sensor가 웹훅 body를 넣어줄 파라미터다.</td></tr>
+    <tr><td><code>image: curlimages/curl:8.10.1</code></td><td>HTTP POST를 보내기 위한 작은 curl 이미지다.</td></tr>
+    <tr><td><code>printf '%s' "$PAYLOAD" &gt; /tmp/payload</code></td><td>payload를 파일로 저장한다. shell quoting 문제를 줄이고 body를 그대로 보내기 위한 방식이다.</td></tr>
+    <tr><td><code>--data-binary @/tmp/payload</code></td><td>파일 내용을 HTTP body로 전송한다.</td></tr>
+    <tr><td><code>TARGET_URL</code></td><td>receiver의 클러스터 내부 DNS 주소다. NodePort가 아니라 ClusterIP Service로 통신한다.</td></tr>
+  </table>
+
+  <h3>4.4 EventSource</h3>
+  <p>외부 웹훅 요청을 받는 Argo Events 리소스다. <code>/webhook</code> 경로로 POST 요청을 받는다.</p>
+
+  <pre>apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: webhook-eventsource
+  namespace: argo-webhook-test
+spec:
+  eventBusName: default
+  service:
+    ports:
+      - name: webhook
+        port: 12000
+        targetPort: 12000
+  webhook:
+    message:
+      endpoint: /webhook
+      jsonBody: false
+      method: POST
+      port: "12000"</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>eventBusName: default</code></td><td>수신한 이벤트를 <code>default</code> EventBus로 보낸다.</td></tr>
+    <tr><td><code>service.ports</code></td><td>Argo Events가 EventSource Pod 앞에 내부 Service를 만들 때 사용할 포트다.</td></tr>
+    <tr><td><code>webhook.message</code></td><td><code>message</code>라는 이벤트 이름을 정의한다. Sensor의 <code>eventName</code>과 일치해야 한다.</td></tr>
+    <tr><td><code>endpoint: /webhook</code></td><td>외부에서 호출할 path다.</td></tr>
+    <tr><td><code>method: POST</code></td><td>POST만 이벤트로 받는다.</td></tr>
+    <tr><td><code>jsonBody: false</code></td><td>JSON을 객체로 파싱하지 않고 raw body 문자열로 보관한다. “메시지 그대로 전달”하려고 넣은 설정이다.</td></tr>
+  </table>
+
+  <h3>4.5 EventSource 외부 노출 Service</h3>
+  <p>EventSource에 접근할 수 있도록 별도의 NodePort Service를 만들었다. Argo Events가 내부 Service를 만들 수 있지만, 여기서는 외부 접속 포트를 명확히 고정하기 위해 직접 Service를 추가했다.</p>
+
+  <pre>apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-eventsource-nodeport
+  namespace: argo-webhook-test
+spec:
+  type: NodePort
+  selector:
+    eventsource-name: webhook-eventsource
+  ports:
+    - name: webhook
+      port: 12000
+      targetPort: 12000
+      nodePort: 31081</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>selector.eventsource-name</code></td><td>Argo Events EventSource Pod에 붙는 label을 선택한다.</td></tr>
+    <tr><td><code>nodePort: 31081</code></td><td>외부 웹훅 입력 포트다.</td></tr>
+    <tr><td><code>port/targetPort: 12000</code></td><td>EventSource가 listen하는 내부 포트다.</td></tr>
+  </table>
+
+  <h3>4.6 Sensor</h3>
+  <p>Sensor는 EventSource 이벤트를 감지하고, 그 이벤트의 body를 Workflow 파라미터로 넣어서 Workflow를 생성한다.</p>
+
+  <pre>apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: webhook-forwarder
+  namespace: argo-webhook-test
+spec:
+  eventBusName: default
+  template:
+    serviceAccountName: webhook-sensor
+  dependencies:
+    - name: inbound-webhook
+      eventSourceName: webhook-eventsource
+      eventName: message
+  triggers:
+    - template:
+        name: forward-to-receiver
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: forward-webhook-
+                namespace: argo-webhook-test
+              spec:
+                workflowTemplateRef:
+                  name: forward-webhook-to-receiver
+                arguments:
+                  parameters:
+                    - name: payload
+                      value: "{}"
+          parameters:
+            - src:
+                dependencyName: inbound-webhook
+                dataKey: body
+              dest: spec.arguments.parameters.0.value</pre>
+
+  <table>
+    <tr><th>필드</th><th>설명</th></tr>
+    <tr><td><code>template.serviceAccountName</code></td><td>Workflow 생성 권한을 가진 ServiceAccount를 Sensor에 적용한다.</td></tr>
+    <tr><td><code>dependencies</code></td><td>어떤 EventSource의 어떤 이벤트를 기다릴지 정의한다.</td></tr>
+    <tr><td><code>eventSourceName</code></td><td><code>webhook-eventsource</code>와 연결된다.</td></tr>
+    <tr><td><code>eventName</code></td><td>EventSource의 <code>webhook.message</code>에서 <code>message</code>와 맞아야 한다.</td></tr>
+    <tr><td><code>triggers.template.k8s.operation: create</code></td><td>이벤트가 오면 Kubernetes 리소스를 생성한다.</td></tr>
+    <tr><td><code>kind: Workflow</code></td><td>생성 대상은 Argo Workflow다.</td></tr>
+    <tr><td><code>generateName: forward-webhook-</code></td><td>Workflow 이름을 매번 자동 생성한다.</td></tr>
+    <tr><td><code>workflowTemplateRef</code></td><td>앞에서 만든 WorkflowTemplate을 참조한다.</td></tr>
+    <tr><td><code>dataKey: body</code></td><td>EventSource 이벤트 payload에서 body 값을 읽는다.</td></tr>
+    <tr><td><code>dest: spec.arguments.parameters.0.value</code></td><td>읽은 body를 생성될 Workflow의 첫 번째 파라미터 값에 넣는다.</td></tr>
+  </table>
+
+  <h2 class="page-break">5. 사용 방법</h2>
+
+  <h3>5.1 ArgoCD로 배포</h3>
+  <p>ArgoCD Application의 path를 repo의 <code>argoevent</code>로 잡고 sync한다. 전체 repo root를 path로 잡아도 YAML은 <code>argoevent</code> 아래에만 있으므로 동작할 수 있지만, 명확하게 하려면 path를 <code>argoevent</code>로 지정하는 것이 좋다.</p>
+
+  <pre>repo: sungju-argocd-test-repo
+path: argoevent
+namespace: argo-webhook-test 또는 cluster default 설정
+sync: manual 또는 automatic</pre>
+
+  <p>Argo Events CRD와 Argo Workflows CRD는 클러스터에 이미 설치되어 있어야 한다. 설치되어 있지 않으면 <code>EventBus</code>, <code>EventSource</code>, <code>Sensor</code>, <code>WorkflowTemplate</code> 같은 리소스를 Kubernetes가 알 수 없어 sync가 실패한다.</p>
+
+  <h3>5.2 웹훅 전송</h3>
+  <p>Windows PowerShell에서는 아래처럼 요청을 보낸다.</p>
+
+  <pre>curl.exe -X POST http://10.0.0.200:31081/webhook `
+  -H "Content-Type: application/json" `
+  -d "{\"hello\":\"argo\"}"</pre>
+
+  <p>Linux/macOS shell에서는 아래처럼 보낼 수 있다.</p>
+
+  <pre>curl -X POST http://10.0.0.200:31081/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"hello":"argo"}'</pre>
+
+  <h3>5.3 결과 확인</h3>
+  <p>브라우저에서 아래 주소를 연다.</p>
+
+  <pre>http://10.0.0.200:31080/</pre>
+
+  <p>JSON API로 보고 싶으면 아래 주소를 사용한다.</p>
+
+  <pre>http://10.0.0.200:31080/api/events</pre>
+
+  <h3>5.4 정상 동작 시 보이는 것</h3>
+  <ol>
+    <li>curl 요청이 <code>31081</code>로 들어간다.</li>
+    <li>Argo Events EventSource Pod가 이벤트를 만든다.</li>
+    <li>Sensor가 <code>forward-webhook-xxxxx</code> Workflow를 생성한다.</li>
+    <li>Workflow Pod가 curl 컨테이너로 receiver에 POST한다.</li>
+    <li><code>31080</code> 페이지에 요청 body와 header가 표시된다.</li>
+  </ol>
+
+  <h2>6. 운영 중 자주 보는 명령</h2>
+  <p>클러스터에서 직접 확인할 수 있을 때 사용하는 명령이다.</p>
+
+  <pre>kubectl get all -n argo-webhook-test
+kubectl get eventbus,eventsource,sensor -n argo-webhook-test
+kubectl get workflow -n argo-webhook-test
+kubectl logs -n argo-webhook-test deploy/webhook-receiver
+kubectl describe sensor webhook-forwarder -n argo-webhook-test
+kubectl describe eventsource webhook-eventsource -n argo-webhook-test</pre>
+
+  <h3>Workflow 로그 확인</h3>
+  <pre>kubectl get workflow -n argo-webhook-test
+kubectl logs -n argo-webhook-test -l workflows.argoproj.io/workflow=&lt;workflow-name&gt;</pre>
+
+  <h2>7. 문제 해결</h2>
+
+  <h3>7.1 NodePort already allocated</h3>
+  <p>이미 다른 Service가 같은 NodePort를 쓰고 있으면 sync가 실패한다.</p>
+
+  <pre>Service "webhook-receiver" is invalid:
+spec.ports[0].nodePort: Invalid value: 31080: provided port is already allocated</pre>
+
+  <p>해결 방법은 <code>nodePort</code> 값을 Kubernetes NodePort 범위 안의 사용 가능한 값으로 바꾸는 것이다. 기본 범위는 보통 <code>30000-32767</code>이다.</p>
+
+  <pre># receiver UI 포트 변경
+argoevent/10-webhook-receiver.yaml
+nodePort: 31080
+
+# webhook 입력 포트 변경
+argoevent/20-argo-events-workflow.yaml
+nodePort: 31081</pre>
+
+  <h3>7.2 웹훅을 보냈는데 화면에 안 뜸</h3>
+  <ol>
+    <li><code>curl</code> 요청 주소가 <code>31081/webhook</code>인지 확인한다.</li>
+    <li>ArgoCD sync가 완료됐는지 확인한다.</li>
+    <li>EventSource, Sensor Pod가 떠 있는지 확인한다.</li>
+    <li>Workflow가 생성됐는지 확인한다.</li>
+    <li>Workflow Pod 로그에서 curl 실패가 있는지 확인한다.</li>
+    <li>receiver Service DNS가 맞는지 확인한다: <code>webhook-receiver.argo-webhook-test.svc.cluster.local</code></li>
+  </ol>
+
+  <h3>7.3 Workflow가 안 만들어짐</h3>
+  <p>Sensor 권한 또는 dependency 연결 문제일 수 있다.</p>
+
+  <pre>kubectl describe sensor webhook-forwarder -n argo-webhook-test
+kubectl get role,rolebinding,serviceaccount -n argo-webhook-test</pre>
+
+  <p>특히 아래 값들이 서로 맞아야 한다.</p>
+  <ul>
+    <li>EventSource 이름: <code>webhook-eventsource</code></li>
+    <li>EventSource 이벤트 이름: <code>message</code></li>
+    <li>Sensor dependency의 <code>eventSourceName</code>: <code>webhook-eventsource</code></li>
+    <li>Sensor dependency의 <code>eventName</code>: <code>message</code></li>
+    <li>Sensor ServiceAccount: <code>webhook-sensor</code></li>
+  </ul>
+
+  <h3>7.4 JSON이 이상하게 바뀜</h3>
+  <p>이번 YAML에는 <code>jsonBody: false</code>를 넣었다. 이 설정은 EventSource가 요청 body를 JSON 객체로 파싱하지 않고 문자열로 유지하게 한다. 메시지를 최대한 그대로 전달하고 싶을 때 중요하다.</p>
+
+  <h2 class="page-break">8. 수정 포인트별 가이드</h2>
+
+  <h3>receiver UI 포트를 바꾸고 싶을 때</h3>
+  <p><code>argoevent/10-webhook-receiver.yaml</code>에서 Service의 <code>nodePort</code>를 바꾼다. README의 확인 URL도 같이 바꾼다.</p>
+
+  <pre>nodePort: 31080</pre>
+
+  <h3>webhook 입력 포트를 바꾸고 싶을 때</h3>
+  <p><code>argoevent/20-argo-events-workflow.yaml</code>의 <code>webhook-eventsource-nodeport</code> Service에서 <code>nodePort</code>를 바꾼다. README의 curl URL도 같이 바꾼다.</p>
+
+  <pre>nodePort: 31081</pre>
+
+  <h3>webhook path를 바꾸고 싶을 때</h3>
+  <p>EventSource의 <code>endpoint</code>를 바꾼다.</p>
+
+  <pre>webhook:
+  message:
+    endpoint: /webhook</pre>
+
+  <h3>전달 대상 서비스를 바꾸고 싶을 때</h3>
+  <p>WorkflowTemplate의 <code>TARGET_URL</code>을 바꾼다.</p>
+
+  <pre>env:
+  - name: TARGET_URL
+    value: http://webhook-receiver.argo-webhook-test.svc.cluster.local/</pre>
+
+  <h3>받은 요청을 더 오래 저장하고 싶을 때</h3>
+  <p>현재 receiver는 Pod 메모리에만 저장한다. 오래 저장하려면 다음 중 하나로 확장한다.</p>
+  <ul>
+    <li>간단한 테스트: <code>MAX_EVENTS</code> 값을 늘린다.</li>
+    <li>Pod 재시작 후에도 보존: PVC에 파일로 저장한다.</li>
+    <li>운영식 저장: PostgreSQL, Redis, Elasticsearch 같은 외부 저장소를 붙인다.</li>
+  </ul>
+
+  <h2>9. 학습 포인트 정리</h2>
+  <ul>
+    <li><code>EventSource</code>는 외부 이벤트를 Kubernetes 안으로 가져오는 입구다.</li>
+    <li><code>EventBus</code>는 EventSource와 Sensor 사이에서 이벤트를 운반한다.</li>
+    <li><code>Sensor</code>는 이벤트를 보고 어떤 액션을 할지 결정한다.</li>
+    <li><code>WorkflowTemplate</code>은 반복 실행할 Workflow 로직을 템플릿으로 정의한다.</li>
+    <li><code>Workflow</code>는 실제 실행 인스턴스다. 이번 구성에서는 웹훅 요청 1건마다 Workflow 1개가 만들어진다.</li>
+    <li><code>ServiceAccount + Role + RoleBinding</code>은 Sensor가 Workflow를 생성할 권한을 주기 위해 필요하다.</li>
+    <li><code>NodePort</code>는 외부에서 노드 IP와 포트로 접속하기 위한 Service 타입이다.</li>
+    <li>클러스터 내부 통신은 NodePort가 아니라 Service DNS를 쓰는 것이 일반적이다.</li>
+  </ul>
+
+  <h2>10. 현재 repo에 올라간 최종 상태</h2>
+  <table>
+    <tr><th>항목</th><th>값</th></tr>
+    <tr><td>네임스페이스</td><td><code>argo-webhook-test</code></td></tr>
+    <tr><td>receiver Deployment</td><td><code>webhook-receiver</code></td></tr>
+    <tr><td>receiver 외부 포트</td><td><code>31080</code></td></tr>
+    <tr><td>EventBus</td><td><code>default</code></td></tr>
+    <tr><td>EventSource</td><td><code>webhook-eventsource</code></td></tr>
+    <tr><td>EventSource 이벤트 이름</td><td><code>message</code></td></tr>
+    <tr><td>webhook 입력 path</td><td><code>/webhook</code></td></tr>
+    <tr><td>webhook 입력 외부 포트</td><td><code>31081</code></td></tr>
+    <tr><td>Sensor</td><td><code>webhook-forwarder</code></td></tr>
+    <tr><td>WorkflowTemplate</td><td><code>forward-webhook-to-receiver</code></td></tr>
+    <tr><td>생성되는 Workflow 이름 prefix</td><td><code>forward-webhook-</code></td></tr>
+  </table>
+</body>
+</html>
