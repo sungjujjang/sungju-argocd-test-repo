@@ -4,6 +4,12 @@ metadata:
   name: operate-workflow-sa
   namespace: argo-events
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: discord-workflow-sa
+  namespace: argo
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -31,4 +37,32 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: workflow-submit-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: discord-workflow-role
+  namespace: argo
+rules:
+- apiGroups:
+  - argoproj.io
+  resources:
+  - workflowtaskresults
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: discord-workflow-binding
+  namespace: argo
+subjects:
+- kind: ServiceAccount
+  name: discord-workflow-sa
+  namespace: argo
+roleRef:
+  kind: Role
+  name: discord-workflow-role
   apiGroup: rbac.authorization.k8s.io

@@ -5,10 +5,13 @@ metadata:
   namespace: argo
 spec:
   entrypoint: send
+  serviceAccountName: discord-workflow-sa
   arguments:
     parameters:
     - name: payload
       value: '{}'
+    - name: content
+      value: ''
   volumes:
   - name: discord-secret
     secret:
@@ -20,6 +23,8 @@ spec:
       env:
       - name: DISCORD_PAYLOAD
         value: "{{workflow.parameters.payload}}"
+      - name: DISCORD_CONTENT
+        value: "{{workflow.parameters.content}}"
       command:
       - sh
       - -c
@@ -28,7 +33,13 @@ spec:
         set -eu
 
         WEBHOOK_URL="$(cat /secret/url)"
-        printf '%s' "$DISCORD_PAYLOAD" > /tmp/payload.json
+
+        if [ "$DISCORD_PAYLOAD" != "{}" ]; then
+          printf '%s' "$DISCORD_PAYLOAD" > /tmp/payload.json
+        else
+          ESCAPED_CONTENT=$(printf '%s' "$DISCORD_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN { printf "{\"content\":\"" } { printf "%s\\n", $0 } END { printf "\"}" }')
+          printf '%s' "$ESCAPED_CONTENT" > /tmp/payload.json
+        fi
 
         curl -k --fail --show-error --silent \
           -H "Content-Type: application/json" \

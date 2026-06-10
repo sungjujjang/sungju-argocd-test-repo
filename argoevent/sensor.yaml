@@ -29,8 +29,15 @@ spec:
                 parameters:
                 - name: payload
                   value: '{}'
+                - name: content
+                  value: ''
     parameters:
     - src:
         dependencyName: webhook-dep
-        dataKey: body
+        dataTemplate: "{{ .Input.body | toJson }}"
       dest: spec.arguments.parameters.0.value
+    - src:
+        dependencyName: webhook-dep
+        dataKey: body.content
+        value: ''
+      dest: spec.arguments.parameters.1.value
