@@ -22,6 +22,9 @@ spec:
 
     container:
       image: curlimages/curl:8.7.1
+      env:
+      - name: MESSAGE
+        value: "{{workflow.parameters.message}}"
 
       command:
       - sh
@@ -29,18 +32,19 @@ spec:
 
       args:
       - |
+        set -eu
+
         WEBHOOK=$(cat /secret/url)
 
-        echo "WEBHOOK=$(cat /secret/url)"
-
-        ls -al /secret
-
-        cat /secret/url
+        PAYLOAD=$(printf '%s' "$MESSAGE" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN { printf "{\"content\":\"" } { printf "%s\\n", $0 } END { printf "\"}" }')
 
         curl -k \
+          --fail \
+          --show-error \
+          --silent \
           -H "Content-Type: application/json" \
           -X POST \
-          -d "{\"content\":\"{{workflow.parameters.message}}\"}" \
+          -d "$PAYLOAD" \
           "$WEBHOOK"
 
       volumeMounts:
