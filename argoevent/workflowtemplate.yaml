@@ -28,7 +28,7 @@ spec:
       - |
         set -eu
 
-        WEBHOOK_URL="$(cat /secret/url)"
+        WEBHOOK_URL="https://discord.com/api/webhooks/1514202611316686899/xv7t19h1UsafSohFIbySI-BIu8BVq1zZ3EVVoeWfq7oEfOFMXry6QnJ5D7SrPMfM7k5y"
         ESCAPED_CONTENT=$(printf '%s' "$DISCORD_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN { printf "{\"content\":\"" } { printf "%s\\n", $0 } END { printf "\"}" }')
         printf '%s' "$ESCAPED_CONTENT" > /tmp/payload.json
 
