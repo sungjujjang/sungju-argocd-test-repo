@@ -29,5 +29,5 @@ spec:
     parameters:
     - src:
         dependencyName: webhook-dep
-        dataKey: body.message
+        dataKey: message
       dest: spec.arguments.parameters.0.value
