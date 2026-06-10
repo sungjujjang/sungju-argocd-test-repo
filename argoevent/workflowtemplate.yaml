@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: discord-forward-twice
+  namespace: argo
+spec:
+  entrypoint: send
+  arguments:
+    parameters:
+    - name: payload
+      value: '{}'
+  volumes:
+  - name: discord-secret
+    secret:
+      secretName: discord-secret
+  templates:
+  - name: send
+    container:
+      image: curlimages/curl:8.7.1
+      env:
+      - name: DISCORD_PAYLOAD
+        value: "{{workflow.parameters.payload}}"
+      command:
+      - sh
+      - -c
+      args:
+      - |
+        set -eu
+
+        WEBHOOK_URL="$(cat /secret/url)"
+        printf '%s' "$DISCORD_PAYLOAD" > /tmp/payload.json
+
+        curl --fail --show-error --silent \
+          -H "Content-Type: application/json" \
+          -X POST \
+          --data-binary @/tmp/payload.json \
+          "$WEBHOOK_URL"
+
+        curl --fail --show-error --silent \
+          -H "Content-Type: application/json" \
+          -X POST \
+          --data-binary @/tmp/payload.json \
+          "$WEBHOOK_URL"
+      volumeMounts:
+      - name: discord-secret
+        mountPath: /secret
+        readOnly: true
