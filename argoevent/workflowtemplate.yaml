@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+
+metadata:
+  name: discord-message
+  namespace: argo
+
+spec:
+  entrypoint: send
+
+  arguments:
+    parameters:
+    - name: message
+      value: default
+
+  templates:
+  - name: send
+
+    container:
+      image: curlimages/curl:8.7.1
+
+      command:
+      - sh
+      - -c
+
+      args:
+      - |
+        WEBHOOK=$(cat /secret/url)
+
+        curl \
+          -H "Content-Type: application/json" \
+          -X POST \
+          -d "{\"content\":\"{{workflow.parameters.message}}\"}" \
+          "$WEBHOOK"
+
+    volumeMounts:
+    - name: discord-secret
+      mountPath: /secret
+
+  volumes:
+  - name: discord-secret
+    secret:
+      secretName: discord-secret
