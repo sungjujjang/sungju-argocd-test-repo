@@ -103,7 +103,7 @@ spec:
     - name: webhook
       port: 12000
       targetPort: 12000
-      nodePort: 30081
+      nodePort: 31081
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Sensor
