@@ -1,6 +1,5 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
-
 metadata:
   name: discord-message
   namespace: argo
@@ -12,6 +11,11 @@ spec:
     parameters:
     - name: message
       value: default
+
+  volumes:
+  - name: discord-secret
+    secret:
+      secretName: discord-secret
 
   templates:
   - name: send
@@ -33,11 +37,6 @@ spec:
           -d "{\"content\":\"{{workflow.parameters.message}}\"}" \
           "$WEBHOOK"
 
-    volumeMounts:
-    - name: discord-secret
-      mountPath: /secret
-
-  volumes:
-  - name: discord-secret
-    secret:
-      secretName: discord-secret
+      volumeMounts:
+      - name: discord-secret
+        mountPath: /secret

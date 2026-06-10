@@ -5,16 +5,8 @@ metadata:
   namespace: argo-events
 
 spec:
-  service:
-    ports:
-    - port: 12000
-      targetPort: 12000
-      nodePort: 31200
-
   webhook:
     incoming:
       endpoint: /message
       method: POST
       port: "12000"
-
-  serviceType: NodePort
