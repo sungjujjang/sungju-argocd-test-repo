@@ -22,21 +22,9 @@ spec:
         operation: submit
 
         source:
-          resource:
-            apiVersion: argoproj.io/v1alpha1
-            kind: Workflow
-
-            metadata:
-              generateName: discord-
-
-            spec:
-              workflowTemplateRef:
-                name: discord-message
-
-              arguments:
-                parameters:
-                - name: message
-                  value: placeholder
+          workflowTemplate:
+            name: discord-message
+            namespace: argo
 
     parameters:
     - src:
