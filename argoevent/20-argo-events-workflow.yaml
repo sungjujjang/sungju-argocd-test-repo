@@ -1,0 +1,144 @@
+apiVersion: argoproj.io/v1alpha1
+kind: EventBus
+metadata:
+  name: default
+  namespace: argo-webhook-test
+spec:
+  nats:
+    native:
+      replicas: 1
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook-sensor
+  namespace: argo-webhook-test
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webhook-sensor
+  namespace: argo-webhook-test
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflows"]
+    verbs: ["create", "get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webhook-sensor
+  namespace: argo-webhook-test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: webhook-sensor
+subjects:
+  - kind: ServiceAccount
+    name: webhook-sensor
+    namespace: argo-webhook-test
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: forward-webhook-to-receiver
+  namespace: argo-webhook-test
+spec:
+  entrypoint: forward
+  arguments:
+    parameters:
+      - name: payload
+        value: "{}"
+  templates:
+    - name: forward
+      inputs:
+        parameters:
+          - name: payload
+      container:
+        image: curlimages/curl:8.10.1
+        imagePullPolicy: IfNotPresent
+        command: [sh, -c]
+        args:
+          - |
+            set -eu
+            printf '%s' "$PAYLOAD" > /tmp/payload
+            curl -sS -X POST "$TARGET_URL" \
+              -H "Content-Type: application/json" \
+              --data-binary @/tmp/payload
+        env:
+          - name: TARGET_URL
+            value: http://webhook-receiver.argo-webhook-test.svc.cluster.local/
+          - name: PAYLOAD
+            value: "{{inputs.parameters.payload}}"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: webhook-eventsource
+  namespace: argo-webhook-test
+spec:
+  eventBusName: default
+  service:
+    ports:
+      - name: webhook
+        port: 12000
+        targetPort: 12000
+  webhook:
+    message:
+      endpoint: /webhook
+      jsonBody: false
+      method: POST
+      port: "12000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-eventsource-nodeport
+  namespace: argo-webhook-test
+spec:
+  type: NodePort
+  selector:
+    eventsource-name: webhook-eventsource
+  ports:
+    - name: webhook
+      port: 12000
+      targetPort: 12000
+      nodePort: 30081
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: webhook-forwarder
+  namespace: argo-webhook-test
+spec:
+  eventBusName: default
+  template:
+    serviceAccountName: webhook-sensor
+  dependencies:
+    - name: inbound-webhook
+      eventSourceName: webhook-eventsource
+      eventName: message
+  triggers:
+    - template:
+        name: forward-to-receiver
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: forward-webhook-
+                namespace: argo-webhook-test
+              spec:
+                workflowTemplateRef:
+                  name: forward-webhook-to-receiver
+                arguments:
+                  parameters:
+                    - name: payload
+                      value: "{}"
+          parameters:
+            - src:
+                dependencyName: inbound-webhook
+                dataKey: body
+              dest: spec.arguments.parameters.0.value
