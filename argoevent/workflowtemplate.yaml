@@ -31,6 +31,12 @@ spec:
       - |
         WEBHOOK=$(cat /secret/url)
 
+        echo "WEBHOOK=$(cat /secret/url)"
+
+        ls -al /secret
+
+        cat /secret/url
+
         curl -k \
           -H "Content-Type: application/json" \
           -X POST \
