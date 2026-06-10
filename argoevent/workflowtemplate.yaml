@@ -8,8 +8,6 @@ spec:
   serviceAccountName: discord-workflow-sa
   arguments:
     parameters:
-    - name: payload
-      value: '{}'
     - name: content
       value: ''
   volumes:
@@ -21,8 +19,6 @@ spec:
     container:
       image: curlimages/curl:8.7.1
       env:
-      - name: DISCORD_PAYLOAD
-        value: "{{workflow.parameters.payload}}"
       - name: DISCORD_CONTENT
         value: "{{workflow.parameters.content}}"
       command:
@@ -33,13 +29,8 @@ spec:
         set -eu
 
         WEBHOOK_URL="$(cat /secret/url)"
-
-        if [ "$DISCORD_PAYLOAD" != "{}" ]; then
-          printf '%s' "$DISCORD_PAYLOAD" > /tmp/payload.json
-        else
-          ESCAPED_CONTENT=$(printf '%s' "$DISCORD_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN { printf "{\"content\":\"" } { printf "%s\\n", $0 } END { printf "\"}" }')
-          printf '%s' "$ESCAPED_CONTENT" > /tmp/payload.json
-        fi
+        ESCAPED_CONTENT=$(printf '%s' "$DISCORD_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'BEGIN { printf "{\"content\":\"" } { printf "%s\\n", $0 } END { printf "\"}" }')
+        printf '%s' "$ESCAPED_CONTENT" > /tmp/payload.json
 
         curl -k --fail --show-error --silent \
           -H "Content-Type: application/json" \

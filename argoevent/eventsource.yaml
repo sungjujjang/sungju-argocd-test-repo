@@ -7,5 +7,6 @@ spec:
   webhook:
     incoming:
       endpoint: /message
+      jsonBody: true
       method: POST
       port: "12000"
