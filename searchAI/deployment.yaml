@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searchai
+  namespace: searchai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: searchai
+  template:
+    metadata:
+      labels:
+        app: searchai
+    spec:
+      containers:
+        - name: searchai
+          image: sungjujjang/searchai:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: searchai-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: searchai-service
+  namespace: searchai
+spec:
+  selector:
+    app: searchai
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
