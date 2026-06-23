@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: nginx
+  namespace: jenkins
+  labels:
+    argocd.argoproj.io/refresh: hard
+spec:
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: nginx
+  sources:
+    - repoURL: https://github.com/Jena98/argocd-demo.git  # path is missing so no manifests are generated
+      targetRevision: HEAD
+      ref: myRepo                                         # repo is available via symlink "myRepo"
+    - repoURL: https://github.com/jenkinsci/helm-charts.git
+      targetRevision: HEAD
+      path: charts/jenkins
+      helm:
+        valueFiles:
+          - $myRepo/jenkins/values.yaml
