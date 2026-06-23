@@ -13,9 +13,9 @@ spec:
       selfHeal: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: nginx
+    namespace: jenkins
   sources:
-    - repoURL: https://github.com/Jena98/argocd-demo.git  # path is missing so no manifests are generated
+    - repoURL: https://github.com/sungjujjang/sungju-argocd-test-repo.git  # path is missing so no manifests are generated
       targetRevision: HEAD
       ref: myRepo                                         # repo is available via symlink "myRepo"
     - repoURL: https://github.com/jenkinsci/helm-charts.git
