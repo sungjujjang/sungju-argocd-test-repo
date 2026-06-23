@@ -1,0 +1,14 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: jenkinsapp-ingress
+  namespace: jenkinsapp
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`jenkins.sungju.xyz`)
+      services:
+        - name: jenkinsapp
+          port: 8080
