@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yakle
+  namespace: yakle
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yakle
+  template:
+    metadata:
+      labels:
+        app: yakle
+    spec:
+      containers:
+        - name: yakle
+          image: sungjujjang/yakle:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: yakle-secret
+
+          volumeMounts:
+            - name: yakle-storage
+              mountPath: /app/data
+
+      volumes:
+        - name: yakle-storage
+          persistentVolumeClaim:
+            claimName: yakle-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yakle-service
+  namespace: yakle
+spec:
+  selector:
+    app: yakle
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
