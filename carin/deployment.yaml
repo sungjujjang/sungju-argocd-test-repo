@@ -1,45 +1,45 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: yakle
-  namespace: yakle
+  name: carin
+  namespace: carin
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: yakle
+      app: carin
   template:
     metadata:
       labels:
-        app: yakle
+        app: carin
     spec:
       containers:
-        - name: yakle
-          image: sungjujjang/yakle:20260625-090734
+        - name: carin
+          image: sungjujjang/carin:latest
           ports:
-            - containerPort: 3000
+            - containerPort: 8000
           envFrom:
             - secretRef:
-                name: yakle-secret
+                name: carin-secret
 
           volumeMounts:
-            - name: yakle-storage
+            - name: carin-storage
               mountPath: /app/data
 
       volumes:
-        - name: yakle-storage
+        - name: carin-storage
           persistentVolumeClaim:
-            claimName: yakle-pvc
+            claimName: carin-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: yakle-service
-  namespace: yakle
+  name: carin-service
+  namespace: carin
 spec:
   selector:
-    app: yakle
+    app: carin
   ports:
-    - port: 3000
-      targetPort: 3000
+    - port: 8000
+      targetPort: 8000
   type: ClusterIP
