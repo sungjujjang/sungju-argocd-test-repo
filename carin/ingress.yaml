@@ -11,4 +11,4 @@ spec:
       match: Host(`carin.sungju.xyz`)
       services:
         - name: carin-service
-          port: 3000
+          port: 8000
