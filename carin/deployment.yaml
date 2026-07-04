@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: carin
-          image: sungjujjang/carin:20260704-171214
+          image: sungjujjang/carin:20260704-181215
           ports:
             - containerPort: 8000
           volumeMounts:
