@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: searchai
-          image: sungjujjang/searchai:20260706-120211
+          image: sungjujjang/searchai:20260706-140211
           ports:
             - containerPort: 3000
           envFrom:
