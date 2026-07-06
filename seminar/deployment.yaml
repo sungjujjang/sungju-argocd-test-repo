@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seminar
+  namespace: seminar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seminar
+  template:
+    metadata:
+      labels:
+        app: seminar
+    spec:
+      containers:
+        - name: seminar
+          image: sungjujjang/seminar:20260706-140211
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: seminar-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seminar-service
+  namespace: seminar
+spec:
+  selector:
+    app: seminar
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP
