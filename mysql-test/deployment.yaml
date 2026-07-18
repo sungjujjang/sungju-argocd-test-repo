@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql-test
+  namespace: mysql-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-test
+
+  template:
+    metadata:
+      labels:
+        app: mysql-test
+
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+
+          ports:
+            - containerPort: 3306
+
+          envFrom:
+            - secretRef:
+                name: mysql-test-secret
+
+          volumeMounts:
+            - mountPath: /var/lib/mysql
+              name: mysql-test-storage
+
+      volumes:
+        - name: mysql-test-storage
+          persistentVolumeClaim:
+            claimName: mysql-test-data
