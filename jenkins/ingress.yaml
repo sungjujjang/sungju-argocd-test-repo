@@ -8,7 +8,7 @@ spec:
     - web
   routes:
     - kind: Rule
-      match: Host(`jenkins.sungju.xyz`)
+      match: Host(`jenkins-outdated.sungju.xyz`)
       services:
         - name: jenkinsapp
           port: 8080
