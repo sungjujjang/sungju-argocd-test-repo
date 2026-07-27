@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: user-pwa
-          image: sungjujjang/user_pwa:20260727-160912
+          image: sungjujjang/user_pwa:20260727-165712
           ports:
             - containerPort: 80
 ---
