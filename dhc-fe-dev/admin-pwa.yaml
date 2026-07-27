@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-pwa
+  namespace: dhc-fe-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-pwa
+  template:
+    metadata:
+      labels:
+        app: admin-pwa
+    spec:
+      containers:
+        - name: admin-pwa
+          image: sungjujjang/admin_pwa:latest
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-pwa-service
+  namespace: dhc-fe-dev
+spec:
+  selector:
+    app: admin-pwa
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: admin-pwa-ingress
+  namespace: dhc-fe-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`dhc-fe-dev-admin-pwa.sungju.xyz`)
+      services:
+        - name: admin-pwa-service
+          port: 80
