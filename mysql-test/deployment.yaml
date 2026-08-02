@@ -20,7 +20,7 @@ spec:
           image: mysql:8.4
 
           ports:
-            - containerPort: 3306
+            - containerPort: 3305
 
           envFrom:
             - secretRef:
