@@ -1,0 +1,14 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: photofolio-sungju-ingress
+  namespace: photofolio-sungju
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`dev.sungju.xyz`)
+      services:
+        - name: photofolio-sungju-service
+          port: 8000

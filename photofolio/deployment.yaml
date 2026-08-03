@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: photofolio-sungju
+  namespace: photofolio-sungju
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: photofolio-sungju
+  template:
+    metadata:
+      labels:
+        app: photofolio-sungju
+    spec:
+      containers:
+        - name: photofolio-sungju
+          image: sungjujjang/photofolio-sungju:20260727-151202
+          ports:
+            - containerPort: 80
+
+      volumes:
+        - name: photofolio-sungju-storage
+          persistentVolumeClaim:
+            claimName: photofolio-sungju-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: photofolio-sungju-service
+  namespace: photofolio-sungju
+spec:
+  selector:
+    app: photofolio-sungju
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
