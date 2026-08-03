@@ -18,11 +18,6 @@ spec:
           image: sungjujjang/photofolio-sungju:20260804-002532
           ports:
             - containerPort: 80
-
-      volumes:
-        - name: photofolio-sungju-storage
-          persistentVolumeClaim:
-            claimName: photofolio-sungju-pvc
 ---
 apiVersion: v1
 kind: Service
