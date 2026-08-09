@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: dexam-be-dev
-          image: sungjujjang/dexam-be-dev:20260810-023010
+          image: sungjujjang/dexam-be-dev:20260810-031310
 
           ports:
             - containerPort: 8080
