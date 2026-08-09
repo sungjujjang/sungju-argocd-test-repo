@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mysql-test
-  namespace: mysql-test
+  name: mysql-dexam-be-dev
+  namespace: dexam-be-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: mysql-test
+      app: mysql-dexam-be-dev
 
   template:
     metadata:
       labels:
-        app: mysql-test
+        app: mysql-dexam-be-dev
 
     spec:
       containers:
@@ -24,26 +24,26 @@ spec:
 
           envFrom:
             - secretRef:
-                name: mysql-test-secret
+                name: dexam-be-dev-secret
 
           volumeMounts:
             - mountPath: /var/lib/mysql
-              name: mysql-test-storage
+              name: mysql-dexam-be-dev-storage
 
       volumes:
-        - name: mysql-test-storage
+        - name: mysql-dexam-be-dev-storage
           persistentVolumeClaim:
-            claimName: mysql-test-data
+            claimName: mysql-dexam-be-dev-data
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: mysql-test
-  namespace: mysql-test
+  name: mysql-dexam-be-dev
+  namespace: mysql-dexam-be-dev
 
 spec:
   selector:
-    app: mysql-test
+    app: mysql-dexam-be-dev
 
   ports:
     - port: 3306

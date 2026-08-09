@@ -1,0 +1,14 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: dexam-be-dev-ingress
+  namespace: dexam-be-dev
+spec:
+  entryPoints:
+    - web
+  routes:
+    - kind: Rule
+      match: Host(`dexam-be-dev.sungju.xyz`)
+      services:
+        - name: dexam-be-dev-service
+          port: 8080
