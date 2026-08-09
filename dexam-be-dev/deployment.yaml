@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: dexam-be-dev
-          image: sungjujjang/dexam-be-dev:latest
+          image: sungjujjang/dexam-be-dev:20260810-023010
           ports:
             - containerPort: 8080
           volumeMounts:
