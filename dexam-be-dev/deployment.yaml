@@ -3,24 +3,27 @@ kind: Deployment
 metadata:
   name: dexam-be-dev
   namespace: dexam-be-dev
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       app: dexam-be-dev
+
   template:
     metadata:
       labels:
         app: dexam-be-dev
+
     spec:
       containers:
         - name: dexam-be-dev
           image: sungjujjang/dexam-be-dev:20260810-023010
+
           ports:
             - containerPort: 8080
-          volumeMounts:
-            - name: dexam-be-dev-storage
-              mountPath: /app/data
+
           envFrom:
             - secretRef:
                 name: dexam-be-dev-secret
@@ -30,10 +33,13 @@ kind: Service
 metadata:
   name: dexam-be-dev-service
   namespace: dexam-be-dev
+
 spec:
   selector:
     app: dexam-be-dev
+
   ports:
     - port: 8080
       targetPort: 8080
+
   type: ClusterIP
