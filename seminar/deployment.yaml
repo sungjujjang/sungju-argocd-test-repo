@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: seminar
-          image: sungjujjang/seminar:20260810-213712
+          image: sungjujjang/seminar:20260812-141112
           ports:
             - containerPort: 8080
           envFrom:
