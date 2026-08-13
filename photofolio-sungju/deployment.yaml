@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: photofolio-sungju
-          image: sungjujjang/photofolio-sungju:20260812-201707
+          image: sungjujjang/photofolio-sungju:20260813-221310
           ports:
             - containerPort: 80
 ---
