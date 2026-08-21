@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: admin-web
-          image: sungjujjang/admin_web:20260820-202111
+          image: sungjujjang/admin_web:20260821-172013
           ports:
             - containerPort: 80
 ---
