@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: admin-pwa
-          image: sungjujjang/admin_pwa:20260821-152307
+          image: sungjujjang/admin_pwa:20260821-170308
           ports:
             - containerPort: 80
 ---
